@@ -1,47 +1,30 @@
 from django.shortcuts import redirect, render
+
 from .models import Course
-from .scrapers import ubcexplorer as ex, ubcgrades as gr, ratemyprof as rmp
 
 
 def search(request):
     '''Works as a "buffer" for when we are obtaining data'''
     if request.method == 'GET':
         search = request.GET.get('find')
-        # print('search', search)
-        return redirect('coursetracker:course', pk=search)
+        course_name = search.upper()  # make search query uppercase
+        print(f"*Searching database for {course_name}")
+        return redirect('coursetracker:course', course_name)
 
 
-def course(request, pk):
-    # initializing course_name so that the subject is all caps
-    course_name = pk
-    course_name_list = pk.split(' ')
-    if len(course_name_list) == 2:
-        course_name = f"{course_name_list[0].upper()} {course_name_list[1]}"
+def course(request, course_name):
+    '''Finds the Course object from its course name, returning that course's page if it exists.
 
+    Inputs:
+        - course_name (str): must be in the format '<subject> <number><detail>', all caps
+            - Not all course names have details
+            - Examples: MATH 100, APSC 496D
+    '''
     try:
         c = Course.objects.get(course_name__exact=course_name)
+        print(f"*{course_name} found in database")
     except Course.DoesNotExist:
+        print(f"*Course {course_name} does not exist")
         return render(request, 'coursetracker/404.html')
 
-    subject, course = course_name.split(' ')
-    exp = ex.course_info_with_prereq_tree(subject, course)
-    preq = {} if 'preq' not in exp else exp['preq']
-    preq = {course_name: preq}  # dictionary for tree chart
-
-    profsList = gr.teaching_team(subject, course)
-
-    profs = rmp.get_profs_info(profsList)  # list for sortable list
-    if not profs:
-        return render(request, 'coursetracker/404.html')  # TODO: make separate html page for this
-
-    profsSecInfo = gr.recent_sections_taught(profsList, subject, course)
-    sectionProfs = {}
-    for prof in profsSecInfo:
-        for sec in profsSecInfo[prof]:
-            if sec not in sectionProfs:
-                sectionProfs[sec] = []
-            sectionProfs[sec].append(prof)
-    sectionProfsSorted = {sec: sectionProfs[sec] for sec in sorted(sectionProfs)}
-
-    return render(request, 'coursetracker/course.html', {'course': c, 'preq': preq, 'professors_info': profs,
-                                                         'sections_taught': sectionProfsSorted})
+    return render(request, 'coursetracker/course.html', {'course': c})
